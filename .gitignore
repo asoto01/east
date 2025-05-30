@@ -1,1 +1,8 @@
 *.swp
+*.png
+*.json
+*.xlsx
+*venv
+
+# Specifically for LibreOffice/OpenOffice lock files
+.~lock.*#
