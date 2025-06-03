@@ -10,7 +10,8 @@ from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from webdriver_manager.chrome import ChromeDriverManager
 import pandas as pd
-import glob # To easily find the latest downloaded file
+import re # For regular expressions to extract student count
+from selenium.webdriver.support.ui import Select # Import Select for dropdowns
 
 # --- Configuration ---
 CREDENTIALS_FILE = 'credentials.json'
@@ -68,7 +69,7 @@ def automate_raptor_and_powerschool():
         "download.default_directory": current_working_directory,
         "download.prompt_for_download": False,
         "download.directory_upgrade": True,
-        "plugins.always_open_pdf_externally": True # Important for PDFs, though not directly used here
+        "plugins.always_open_pdf_externally": True
     }
     chrome_options.add_experimental_option("prefs", prefs)
 
@@ -103,20 +104,30 @@ def automate_raptor_and_powerschool():
             login_button.click()
             print("'Log In' button clicked.")
             
-            # --- Optimized Wait for RaptorTech Landing Page ---
-            print(f"Waiting for RaptorTech to redirect to: {INITIAL_AND_TARGET_REPORTS_URL}...")
-            # This waits for the URL to specifically match the target reports URL
+            # --- NEW OPTIMIZATION: Wait for a general post-login element on the dashboard, then force navigate ---
+            # Instead of looking for the 'Reports' link directly, wait for a common element on the dashboard.
+            # Based on your previous description, an element from the product tiles might be a good indicator.
+            # Example: A generic product tile, or a main content div on the dashboard.
+            print("Waiting for RaptorTech dashboard/landing page to load (a general post-login indicator)...")
+            
+            # A more generic element that should be present on the dashboard after login.
+            # This XPath looks for any 'product-tile' link. Adjust if your dashboard has a better, more stable indicator.
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "a.product-tile"))) 
+            print(f"RaptorTech dashboard element detected. Current URL: {driver.current_url}")
+
+            # Now, force a direct navigation to the reports URL.
+            print(f"Forcing direct navigation to target reports page: {INITIAL_AND_TARGET_REPORTS_URL}")
+            driver.get(INITIAL_AND_TARGET_REPORTS_URL)
+            
+            # Finally, confirm that we've landed on the correct reports URL.
             wait.until(EC.url_to_be(INITIAL_AND_TARGET_REPORTS_URL))
             print(f"Successfully landed on RaptorTech reports page: {driver.current_url}")
             
         except Exception as login_step_error:
             print(f"RaptorTech login steps not performed or failed (could mean already logged in or an issue): {login_step_error}")
-            print(f"Current URL is: {driver.current_url}. Assuming RaptorTech session might be active.")
-            # If we are not on the target URL, navigate there directly
+            print(f"Current URL is: {driver.current_url}. Attempting to navigate directly to reports URL if not there.")
             if driver.current_url != INITIAL_AND_TARGET_REPORTS_URL:
-                 print(f"Navigating to target RaptorTech reports page: {INITIAL_AND_TARGET_REPORTS_URL}")
                  driver.get(INITIAL_AND_TARGET_REPORTS_URL)
-                 # Wait for the URL to change to the target page after direct navigation
                  wait.until(EC.url_to_be(INITIAL_AND_TARGET_REPORTS_URL))
                  print(f"Current URL after ensuring reports page: {driver.current_url}")
 
@@ -130,7 +141,6 @@ def automate_raptor_and_powerschool():
         students_tab = wait.until(EC.element_to_be_clickable((By.XPATH, students_tab_xpath)))
         students_tab.click()
         print("'Students' tab clicked.")
-        # Wait for an element inside the Students tab to be visible after click
         wait.until(EC.visibility_of_element_located((By.XPATH, "//div[@id='tab3']//h3[normalize-space(.)='Student Sign-In/Sign-Out History']")))
 
 
@@ -140,7 +150,6 @@ def automate_raptor_and_powerschool():
         sign_in_out_history_link = wait.until(EC.element_to_be_clickable((By.XPATH, sign_in_out_history_xpath)))
         sign_in_out_history_link.click()
         print("'Student Sign-In/Sign-Out History' link clicked.")
-        # Wait for the report criteria section to load, indicated by 'generate-report' button
         wait.until(EC.presence_of_element_located((By.ID, "generate-report")))
 
 
@@ -150,9 +159,8 @@ def automate_raptor_and_powerschool():
         generate_report_button.click()
         print("'Generate Report' button clicked.")
         
-        # --- Optimized Wait for Report Generation (assuming btnExcelExport becomes clickable) ---
-        print("Waiting for report data to load (looking for 'btnExcelExport' to be clickable)...")
-        # This is the key optimization for report generation time
+        # --- Optimized Wait for Report Generation (1 second at most) ---
+        print("Waiting for RaptorTech report data to load (looking for 'btnExcelExport' to be clickable, max 1 sec)...")
         wait.until(EC.element_to_be_clickable((By.ID, "btnExcelExport")))
         print("RaptorTech report appears to have generated.")
 
@@ -176,11 +184,9 @@ def automate_raptor_and_powerschool():
             new_files = files_after_download - files_before_download
             
             for file_name in new_files:
-                # Check for .xlsx and ensure it's not a partial download
                 if file_name.endswith(".xlsx") and not file_name.endswith(".crdownload"):
                     print(f"New .xlsx file detected: {file_name}")
-                    # Give it a tiny bit more time to ensure it's fully written
-                    time.sleep(1) 
+                    time.sleep(1) # Give it a tiny bit more time to ensure it's fully written
                     downloaded_excel_file_path = os.path.join(current_working_directory, file_name)
                     break
             if downloaded_excel_file_path:
@@ -194,9 +200,8 @@ def automate_raptor_and_powerschool():
             print(f"Download complete. File saved as: {downloaded_excel_file_path}")
             
             # --- Consistent File Renaming with Timestamp (using dashes) ---
-            # %I for 12-hour clock, %M for minute, %p for AM/PM
-            today_date_str = datetime.now().strftime("%m-%d-%Y-%I-%M-%p") 
-            new_file_name_base = f"student-sign-in-{today_date_str}"
+            timestamp_str = datetime.now().strftime("%m-%d-%Y-%I-%M-%S-%p") # Added seconds
+            new_file_name_base = f"student-sign-in-{timestamp_str}"
             new_file_name = f"{new_file_name_base}.xlsx"
             new_file_path = os.path.join(current_working_directory, new_file_name)
 
@@ -212,41 +217,32 @@ def automate_raptor_and_powerschool():
 
             # --- Data Extraction from Excel ---
             print("Extracting ID Numbers from the downloaded Excel file...")
+            ids_to_paste = "" # Initialize here to ensure it's always defined
             try:
                 df = pd.read_excel(downloaded_excel_file_path)
                 
-                # Ensure 'Date/Time' column is datetime objects for proper filtering
                 if 'Date/Time' in df.columns:
                     df['Date/Time'] = pd.to_datetime(df['Date/Time'], errors='coerce')
                     
-                    # Filter for times between 8:30 AM and 9:05 AM
-                    # Create time objects for comparison
                     start_time = datetime.strptime("08:30 AM", "%I:%M %p").time()
                     end_time = datetime.strptime("09:05 AM", "%I:%M %p").time()
 
-                    # Filter rows where the time component of 'Date/Time' is within the range
                     filtered_df = df[
                         (df['Date/Time'].dt.time >= start_time) & 
                         (df['Date/Time'].dt.time <= end_time)
                     ]
                     
-                    # Extract 'ID Number' column, drop NaNs, and convert to list of strings
                     if 'ID Number' in filtered_df.columns:
                         extracted_ids = filtered_df['ID Number'].dropna().astype(str).tolist()
-                        print(f"Extracted {len(extracted_ids)} ID(s) from Excel file.")
-                        # Format as a single string, one ID per line
                         ids_to_paste = "\n".join(extracted_ids)
-                        print(f"IDs to paste into PowerSchool:\n{ids_to_paste}")
+                        print(f"Extracted {len(extracted_ids)} ID(s) from Excel file. IDs are:\n{ids_to_paste}")
                     else:
                         print("Error: 'ID Number' column not found in the Excel file.")
-                        ids_to_paste = ""
                 else:
                     print("Error: 'Date/Time' column not found in the Excel file for filtering.")
-                    ids_to_paste = ""
 
             except Exception as excel_error:
                 print(f"Error processing Excel file: {excel_error}")
-                ids_to_paste = ""
 
             # --- PowerSchool Automation ---
             if ids_to_paste:
@@ -261,18 +257,10 @@ def automate_raptor_and_powerschool():
                 password_field_ps.send_keys(powerschool_password)
                 print("PowerSchool credentials entered.")
                 
-                # Assuming the login button is typically the next clickable element or a form submission
-                # If there's no explicit login button, the form might submit on Enter key press.
-                # Let's assume there's a submit button or pressing Enter works.
-                # A common ID for a login button is "btnSubmit" or similar. If not, we can trigger form submit.
-                # For now, let's try to submit the form after entering password.
-                password_field_ps.submit() # This attempts to submit the form after typing password
+                password_field_ps.submit() # Submit the form
                 print("Attempted to log in to PowerSchool.")
 
-                # Wait for the URL to change or a specific element on the PowerSchool dashboard/landing page
-                print("Waiting for PowerSchool dashboard to load...")
-                # You'll need to find a unique element ID/XPATH that appears ONLY after successful login.
-                # For demonstration, I'll wait for the "MultiSelect" link itself, but a dashboard element is better.
+                # Wait for PowerSchool dashboard to load
                 wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "a.dialogDivM.custom_link[title='MultiSelect - Students']")))
                 print("PowerSchool login successful.")
 
@@ -287,10 +275,79 @@ def automate_raptor_and_powerschool():
                 multiselect_textarea = wait.until(EC.visibility_of_element_located((By.ID, "multiSelValsStu")))
                 multiselect_textarea.clear() # Clear any existing content
                 multiselect_textarea.send_keys(ids_to_paste)
-                print("IDs pasted into PowerSchool MultiSelect textarea.")
+                print(f"IDs pasted into PowerSchool MultiSelect textarea. Pasted IDs:\n{ids_to_paste}") # Confirm pasted IDs
+
+                # --- Click "Search" button in MultiSelect dialog ---
+                print("Attempting to click 'Search' button in MultiSelect dialog...")
+                search_button_xpath = "//button[contains(., 'Search') and @onclick=\"MultiSelect.searchType='admin'; MultiSelect.powerScheduler = 'Home'; MultiSelect.collectIDs();\"]"
+                search_button = wait.until(EC.element_to_be_clickable((By.XPATH, search_button_xpath)))
+                search_button.click()
+                print("'Search' button clicked in MultiSelect dialog.")
                 
-                print("PowerSchool process completed. You can now manually proceed in PowerSchool if needed.")
-                time.sleep(5) # Keep browser open briefly for manual inspection
+                # --- Wait for student count and print it ---
+                print("Waiting for student selection count to appear...")
+                # Adjusting to a small fixed wait after visibility to ensure text is stable
+                student_count_element = wait.until(EC.visibility_of_element_located((By.XPATH, "//h2[contains(text(), 'Current Student Selection')]")))
+                time.sleep(0.5) # Small buffer for text rendering
+                
+                count_text = student_count_element.text
+                match = re.search(r'\((\d+)\)', count_text)
+                if match:
+                    student_count = match.group(1)
+                    print(f"Number of students selected: {student_count}")
+                else:
+                    print("Could not extract student count from the element text.")
+                
+                # --- Click the correct dropdown button for "Group Functions" ---
+                print("Attempting to click 'Group Functions' dropdown button...")
+                group_functions_button = wait.until(EC.element_to_be_clickable((By.ID, "selectFunctionDropdownButtonStudent")))
+                group_functions_button.click()
+                print("'Group Functions' dropdown button clicked.")
+                
+                # Add a small explicit wait for the dropdown menu items to become visible
+                # This is important before trying to click 'Mass Update Attendance'
+                time.sleep(0.5) 
+
+                # --- Click "Mass Update Attendance" link ---
+                print("Attempting to click 'Mass Update Attendance' link...")
+                mass_update_attendance_link = wait.until(EC.element_to_be_clickable((By.ID, "lnk_studentsMassUpdateAttendance")))
+                mass_update_attendance_link.click()
+                print("'Mass Update Attendance' link clicked.")
+
+                # --- Wait for redirection to batch update page ---
+                print("Waiting for redirection to batch attendance update page...")
+                wait.until(EC.url_to_be("https://ednovate.powerschool.com/admin/attendance/record/batch/meetinggroup.html?dothisfor=selected"))
+                print(f"Successfully redirected to: {driver.current_url}")
+
+                # --- Select checkbox for "AMA" ---
+                print("Attempting to select 'AMA' checkbox...")
+                ama_checkbox_xpath = "//tr[td[normalize-space(.)='AMA']]/td/input[@type='checkbox' and @name='cb7;1']"
+                ama_checkbox = wait.until(EC.element_to_be_clickable((By.XPATH, ama_checkbox_xpath)))
+                if not ama_checkbox.is_selected():
+                    ama_checkbox.click()
+                    print("'AMA' checkbox selected.")
+                else:
+                    print("'AMA' checkbox was already selected.")
+
+                # --- Select checkbox for "AMAB" ---
+                print("Attempting to select 'AMAB' checkbox...")
+                amab_checkbox_xpath = "//tr[td[normalize-space(.)='AMA']]/td/input[@type='checkbox' and @name='cb7;2']"
+                amab_checkbox = wait.until(EC.element_to_be_clickable((By.XPATH, amab_checkbox_xpath)))
+                if not amab_checkbox.is_selected():
+                    amab_checkbox.click()
+                    print("'AMAB' checkbox selected.")
+                else:
+                    print("'AMAB' checkbox was already selected.")
+                
+                # --- Select "UL" for attendance code ---
+                print("Attempting to select 'UL' as attendance code...")
+                attendance_code_select = wait.until(EC.element_to_be_clickable((By.NAME, "att_attcodelist")))
+                select = Select(attendance_code_select)
+                select.select_by_value("UL")
+                print("'UL' (Unexcused Late Arrival) selected for attendance code.")
+
+                print("PowerSchool batch update configuration complete. Browser will stay open for 10 seconds for review.")
+                time.sleep(10) # Keep browser open for review before closing
 
             else:
                 print("No IDs extracted, skipping PowerSchool automation.")
