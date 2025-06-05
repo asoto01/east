@@ -6,3 +6,5 @@
 
 # Specifically for LibreOffice/OpenOffice lock files
 .~lock.*#
+# Calc extension
+*.ods
