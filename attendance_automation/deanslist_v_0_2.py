@@ -45,10 +45,12 @@ def deanslist_automation():
         # ---- MODIFIED SECTION START ----
         # Wait for the "Record Student Data" tab to be clickable and click it to open the side panel
         print("Waiting for 'Record Student Data' tab...")
+        # Using a more direct XPath and waiting for the element to be present
         record_data_tab = wait.until(
-            EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'nav-tab') and .//i[contains(@class, 'fa-cubes')]]"))
+            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'nav-tab') and contains(normalize-space(), 'Record Student Data')]"))
         )
-        record_data_tab.click()
+        # Use a JavaScript click, which can be more reliable for elements that are tricky to interact with.
+        driver.execute_script("arguments[0].click();", record_data_tab)
         print("'Record Student Data' tab clicked.")
 
         # Wait for the side panel to open and then click on the "Roster" which is labeled "All Students"
@@ -79,7 +81,7 @@ def deanslist_automation():
         # Read the student names from the Excel file
         today_date = datetime.now().strftime('%Y-%m-%d')
         # Use a flexible path to find the file
-        excel_file = f'daily_raptor_report_master/daily_raptor_master_report_{today_date}.xlsx'
+        excel_file = f'daily_raptor_master_report_{today_date}.xlsx'
         
         try:
             print(f"Reading student names from {excel_file}...")
@@ -127,4 +129,3 @@ def deanslist_automation():
 
 if __name__ == "__main__":
     deanslist_automation()
-
