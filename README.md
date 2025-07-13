@@ -72,26 +72,3 @@ This script is located in the `attendance_automation/` directory and automates a
    - If it uses Selenium, ensure you have a compatible web driver (e.g., ChromeDriver) installed and in your PATH.
 
 If the script encounters errors (e.g., missing modules), double-check that all dependencies from `requirements.txt` are installed. Update `requirements.txt` if new packages are needed (e.g., `pip freeze > requirements.txt` after installing).
-
-## Cleaning Up the Repository
-To keep your repo clean and professional:
-- **Add a .gitignore**: Create a `.gitignore` file in the root to ignore unnecessary files like virtual environments, cache, and credentials. Example content:
-  ```
-  venv/
-  __pycache__/
-  *.pyc
-  credentials_json
-  .DS_Store  # Mac-specific
-  ```
-  You can generate a standard Python .gitignore from gitignore.io.
-
-- **Organize Files**: If there are unrelated files, move them to appropriate subdirectories. Version scripts (like rosa_v_0_3.py) suggest keeping older versions in a `archive/` folder if not needed.
-
-- **Commit the README**: Add this README.md to the root and commit/push it:
-  ```
-  git add README.md
-  git commit -m "Add README with setup instructions"
-  git push origin main
-  ```
-
-- **Update Descriptions**: Add more details to this README as you expand the repo, including usage examples, troubleshooting, and contribution guidelines.
